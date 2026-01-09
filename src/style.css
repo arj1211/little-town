@@ -43,6 +43,14 @@ body {
   overflow-y: auto;
 }
 
+.toolbar-title {
+  color: #fff;
+  margin: 0 0 10px 0;
+  font-size: 18px;
+  border-bottom: 2px solid #444;
+  padding-bottom: 10px;
+}
+
 #canvas-container {
   flex: 1;
   position: relative;
@@ -56,23 +64,21 @@ canvas {
   height: 100%;
 }
 
-.tool-section {
+.tool-group {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 0 10px;
-  border-right: 1px solid #555;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0;
+  border: none;
 }
 
-.tool-section:last-child {
-  border-right: none;
-}
-
-.tool-section label {
+.tool-group label {
   color: #aaa;
   font-size: 13px;
   font-weight: 600;
-  margin-right: 5px;
+  margin-bottom: 8px;
+  display: block;
 }
 
 button {
@@ -86,6 +92,7 @@ button {
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
+  width: 100%; /* Make buttons full width in toolbar */
 }
 
 button:hover {
@@ -107,7 +114,8 @@ button.active {
 button.highlight {
   background: #059669;
   border-color: #10b981;
-  animation: pulse 2s infinite;
+  font-size: 15px;
+  padding: 12px;
 }
 
 button.highlight:hover {
@@ -115,34 +123,18 @@ button.highlight:hover {
   border-color: #059669;
 }
 
-@keyframes pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
-  }
+.btn-danger {
+  background: #dc2626;
+  border-color: #ef4444;
+  margin-bottom: 10px;
 }
 
-.stats {
-  flex: 1;
-  text-align: right;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
-  padding-right: 5px;
-}
-
-#zone-types {
-  display: none;
-}
-
-.tool-btn, .zone-btn {
-  min-width: 90px;
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #dc2626;
 }
 
 .example-btn {
-  min-width: 80px;
   background: #7c3aed;
   border-color: #8b5cf6;
 }
@@ -152,33 +144,16 @@ button.highlight:hover {
   border-color: #7c3aed;
 }
 
-#btn-clear {
-  background: #dc2626;
-  border-color: #ef4444;
+.stats {
+  text-align: left;
+  padding: 12px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  margin-top: auto;
 }
 
-#btn-clear:hover {
-  background: #b91c1c;
-  border-color: #dc2626;
-}
-
-@media (max-width: 900px) {
-  #toolbar {
-    font-size: 11px;
-    padding: 8px;
-    gap: 8px;
-  }
-  
-  button {
-    padding: 6px 10px;
-    font-size: 11px;
-  }
-  
-  .stats {
-    width: 100%;
-    text-align: center;
-    margin-top: 5px;
-    padding-top: 8px;
-    border-top: 1px solid #555;
-  }
+#stats-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #fff;
 }

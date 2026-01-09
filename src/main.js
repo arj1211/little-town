@@ -1,6 +1,8 @@
 import './style.css';
 import * as PIXI from 'pixi.js';
-import { TownEditor } from './town/TownEditor.js';
+import { TownModel } from './town/TownModel.js';
+import { TownRenderer } from './town/TownRenderer.js';
+import { InputController } from './town/InputController.js';
 import { PeopleManager } from './systems/PeopleManager.js';
 import { VehicleManager } from './systems/VehicleManager.js';
 import { TimeManager } from './systems/TimeManager.js';
@@ -15,57 +17,7 @@ await app.init({
   resizeTo: window
 });
 
-document.querySelector('#app').innerHTML = `
-  <div id="game-container">
-    <div id="toolbar">
-      <h2 style="color: #fff; margin: 0 0 10px 0; font-size: 18px; border-bottom: 2px solid #444; padding-bottom: 10px;">🏘️ Little Town</h2>
-      
-      <div class="tool-section" style="flex-direction: column; align-items: stretch; border: none; padding: 0;">
-        <label style="margin-bottom: 8px;">Tools</label>
-        <button id="tool-road" class="tool-btn active" style="width: 100%; margin-bottom: 6px;">🛣️ Road</button>
-        <button id="tool-zone" class="tool-btn" style="width: 100%; margin-bottom: 6px;">🏘️ Zone</button>
-        <button id="tool-erase" class="tool-btn" style="width: 100%;">❌ Erase</button>
-      </div>
-      
-      <div class="tool-section" id="zone-types" style="flex-direction: column; align-items: stretch; border: none; padding: 0; display: none;">
-        <label style="margin-bottom: 8px;">Zone Type</label>
-        <button id="zone-residential" class="zone-btn active" style="width: 100%; margin-bottom: 6px;">🏠 Residential</button>
-        <button id="zone-commercial" class="zone-btn" style="width: 100%; margin-bottom: 6px;">🏢 Commercial</button>
-        <button id="zone-school" class="zone-btn" style="width: 100%; margin-bottom: 6px;">🏫 School</button>
-        <button id="zone-community" class="zone-btn" style="width: 100%; margin-bottom: 6px;">🏛️ Community</button>
-        <button id="zone-park" class="zone-btn" style="width: 100%;">🌳 Park</button>
-      </div>
-      
-      <div class="tool-section" style="flex-direction: column; align-items: stretch; border: none; padding: 0;">
-        <label style="margin-bottom: 8px;">File</label>
-        <button id="btn-save" style="width: 100%; margin-bottom: 6px;">💾 Save</button>
-        <button id="btn-load" style="width: 100%; margin-bottom: 6px;">📂 Load</button>
-        <button id="btn-export" style="width: 100%; margin-bottom: 6px;">📤 Export</button>
-        <button id="btn-import" style="width: 100%;">📥 Import</button>
-      </div>
-      
-      <div class="tool-section" style="flex-direction: column; align-items: stretch; border: none; padding: 0;">
-        <label style="margin-bottom: 8px;">Examples</label>
-        <button id="btn-gridtown" class="example-btn" style="width: 100%; margin-bottom: 6px;">Grid Town</button>
-        <button id="btn-riverside" class="example-btn" style="width: 100%; margin-bottom: 6px;">Riverside</button>
-        <button id="btn-suburban" class="example-btn" style="width: 100%; margin-bottom: 6px;">Suburban</button>
-        <button id="btn-downtown" class="example-btn" style="width: 100%; margin-bottom: 6px;">Downtown</button>
-        <button id="btn-village" class="example-btn" style="width: 100%;">Village</button>
-      </div>
-      
-      <div class="tool-section" style="flex-direction: column; align-items: stretch; border: none; padding: 0;">
-        <button id="btn-clear" style="width: 100%; margin-bottom: 10px;">🗑️ Clear All</button>
-        <button id="btn-simulate" class="highlight" style="width: 100%; font-size: 15px; padding: 12px;">▶️ Start Simulation</button>
-      </div>
-      
-      <div class="stats" style="text-align: left; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 6px; margin-top: auto;">
-        <span id="stats-text" style="font-size: 12px; line-height: 1.6;">Draw roads and zones to build your town!</span>
-      </div>
-    </div>
-    <div id="canvas-container"></div>
-  </div>
-`;
-
+// Canvas is appended to the container
 document.querySelector('#canvas-container').appendChild(app.canvas);
 
 // Camera controls
@@ -81,13 +33,18 @@ worldContainer.y = app.screen.height / 2;
 worldContainer.scale.set(scale);
 
 // Zoom limits
-const minZoom = 0.4; // Can see entire 1000x1000 area (increased to see more)
-const maxZoom = 5;   // Can see ~9 houses (residential grid is 12x12, so ~36 units width)
+const minZoom = 0.4;
+const maxZoom = 5;
 
-// Create town editor
-const editor = new TownEditor(worldContainer, app);
+// Initialize Architecture
+const model = new TownModel();
+const renderer = new TownRenderer(model, worldContainer, app);
+const inputController = new InputController(model, renderer, app);
 
-// Simulation systems (not running yet)
+// Load Example Town by default
+model.loadExample();
+
+// Simulation systems
 let peopleManager = null;
 let vehicleManager = null;
 let timeManager = null;
@@ -113,22 +70,17 @@ const btnSave = document.getElementById('btn-save');
 const btnLoad = document.getElementById('btn-load');
 const btnExport = document.getElementById('btn-export');
 const btnImport = document.getElementById('btn-import');
-const exampleTowns = document.getElementById('example-towns');
 const btnClear = document.getElementById('btn-clear');
 const btnSimulate = document.getElementById('btn-simulate');
 const statsText = document.getElementById('stats-text');
-
-console.log('exampleTowns element:', exampleTowns);
-console.log('Has change listener:', exampleTowns !== null);
 
 // Tool selection
 Object.entries(toolButtons).forEach(([tool, btn]) => {
   btn.addEventListener('click', () => {
     Object.values(toolButtons).forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    editor.setTool(tool);
-    
-    // Show/hide zone types based on tool
+    inputController.setTool(tool);
+
     if (tool === 'zone') {
       zoneTypesDiv.style.display = 'flex';
     } else {
@@ -142,13 +94,13 @@ Object.entries(zoneButtons).forEach(([type, btn]) => {
   btn.addEventListener('click', () => {
     Object.values(zoneButtons).forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    editor.setZoneType(type);
+    inputController.setZoneType(type);
   });
 });
 
 // Save/Load buttons
 btnSave.addEventListener('click', () => {
-  const townData = editor.exportTown();
+  const townData = model.exportTown();
   localStorage.setItem('savedTown', JSON.stringify(townData));
   statsText.textContent = 'Town saved!';
   setTimeout(() => {
@@ -161,7 +113,7 @@ btnLoad.addEventListener('click', () => {
   if (savedData) {
     try {
       const townData = JSON.parse(savedData);
-      editor.importTown(townData);
+      model.importTown(townData);
       statsText.textContent = 'Town loaded!';
       setTimeout(() => {
         statsText.textContent = 'Draw roads and zones to build your town!';
@@ -175,7 +127,7 @@ btnLoad.addEventListener('click', () => {
 });
 
 btnExport.addEventListener('click', () => {
-  const townData = editor.exportTown();
+  const townData = model.exportTown();
   const dataStr = JSON.stringify(townData, null, 2);
   const blob = new Blob([dataStr], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -197,7 +149,7 @@ btnImport.addEventListener('click', () => {
     reader.onload = (event) => {
       try {
         const townData = JSON.parse(event.target.result);
-        editor.importTown(townData);
+        model.importTown(townData);
         statsText.textContent = 'Town imported!';
       } catch (error) {
         alert('Error importing town: ' + error.message);
@@ -208,7 +160,7 @@ btnImport.addEventListener('click', () => {
   input.click();
 });
 
-// Example town buttons
+// Example town buttons - Disabled for refactor unless implemented
 const exampleButtons = {
   gridtown: document.getElementById('btn-gridtown'),
   riverside: document.getElementById('btn-riverside'),
@@ -220,20 +172,15 @@ const exampleButtons = {
 Object.entries(exampleButtons).forEach(([name, btn]) => {
   btn.addEventListener('click', () => {
     console.log('Loading example:', name);
-    editor.loadExample(name);
-    statsText.textContent = `Loaded ${name} example!`;
-    setTimeout(() => {
-      if (!isSimulating) {
-        statsText.textContent = 'Click "Start Simulation" to see your town come alive!';
-      }
-    }, 2000);
+    model.loadExample(name);
+    statsText.textContent = `Loaded ${name} example! (Note: Examples WIP)`;
   });
 });
 
 // Clear button
 btnClear.addEventListener('click', () => {
   if (confirm('Clear all roads and zones?')) {
-    editor.clearAll();
+    model.clearAll();
     if (isSimulating) {
       stopSimulation();
     }
@@ -250,24 +197,36 @@ btnSimulate.addEventListener('click', () => {
   }
 });
 
+const speedSlider = document.getElementById('speed-slider');
+
+speedSlider.addEventListener('input', (e) => {
+  const speed = parseInt(e.target.value);
+  if (timeManager) {
+    timeManager.timeScale = speed;
+  }
+});
+
 function startSimulation() {
-  const townData = editor.getData();
-  
+  const townData = model.getData();
+
   if (townData.buildings.length === 0) {
     alert('Please create some zones first!');
     return;
   }
-  
+
   if (townData.roads.length === 0) {
     alert('Please create some roads first!');
     return;
   }
-  
+
   // Create simulation managers
   timeManager = new TimeManager();
-  peopleManager = new PeopleManager(worldContainer, townData, timeManager);
-  vehicleManager = new VehicleManager(worldContainer, townData, timeManager, peopleManager);
-  
+  timeManager.timeScale = parseInt(speedSlider.value);
+
+  // Pass model directly
+  peopleManager = new PeopleManager(worldContainer, model, timeManager);
+  vehicleManager = new VehicleManager(worldContainer, model, timeManager, peopleManager);
+
   isSimulating = true;
   btnSimulate.textContent = '⏸️ Stop Simulation';
   btnSimulate.classList.remove('highlight');
@@ -283,14 +242,16 @@ function stopSimulation() {
     vehicleManager.destroy();
     vehicleManager = null;
   }
-  
+
   isSimulating = false;
   btnSimulate.textContent = '▶️ Start Simulation';
   btnSimulate.classList.add('highlight');
   statsText.textContent = 'Simulation stopped.';
 }
 
-// Camera controls
+// Camera controls & Input
+// InputController handles map interaction (draw road/zone).
+// We still need camera panning/zooming.
 app.canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -300,7 +261,7 @@ app.canvas.addEventListener('wheel', (e) => {
 });
 
 app.canvas.addEventListener('mousedown', (e) => {
-  if (e.button === 1 || e.button === 2) { // Middle or right click
+  if (e.button === 1 || e.button === 2) {
     isDragging = true;
     dragStart = { x: e.clientX - worldContainer.x, y: e.clientY - worldContainer.y };
     app.canvas.style.cursor = 'grabbing';
@@ -312,15 +273,13 @@ app.canvas.addEventListener('mousemove', (e) => {
   if (isDragging) {
     const newX = e.clientX - dragStart.x;
     const newY = e.clientY - dragStart.y;
-    
-    // Apply pan limits - allow slight panning beyond the 1000x1000 world area
+    // Limits
     const worldSize = 1000;
-    const buffer = 200; // Extra buffer for panning
+    const buffer = 200;
     const minX = -(worldSize / 2 + buffer) * scale + app.screen.width / 2;
     const maxX = (worldSize / 2 + buffer) * scale + app.screen.width / 2;
     const minY = -(worldSize / 2 + buffer) * scale + app.screen.height / 2;
     const maxY = (worldSize / 2 + buffer) * scale + app.screen.height / 2;
-    
     worldContainer.x = Math.max(minX, Math.min(maxX, newX));
     worldContainer.y = Math.max(minY, Math.min(maxY, newY));
   }
@@ -335,99 +294,117 @@ app.canvas.addEventListener('mouseup', (e) => {
 
 app.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-// Day/night cycle colors
+// Visuals for Day/Night
+// Ensure darkness overlay is ON TOP of the town
+const darknessOverlay = new PIXI.Graphics();
+darknessOverlay.rect(-2000, -2000, 4000, 4000);
+darknessOverlay.fill({ color: 0x000000, alpha: 0 });
+// Add to worldContainer, which already has renderer layers. 
+// It will be added last, so on top. Perfect.
+worldContainer.addChild(darknessOverlay);
+
+// Helpers
 function getSkyColor(timeOfDay) {
-  // Transition sky color based on time of day
   if (timeOfDay >= 6 && timeOfDay < 7) {
-    // Dawn (6-7 AM): Transition from dark blue to light blue
-    const t = (timeOfDay - 6);
-    return interpolateColor(0x1a1a3e, 0x87ceeb, t);
+    return interpolateColor(0x1a1a3e, 0x87ceeb, timeOfDay - 6);
   } else if (timeOfDay >= 7 && timeOfDay < 18) {
-    // Day (7 AM - 6 PM): Light blue sky
     return 0x87ceeb;
   } else if (timeOfDay >= 18 && timeOfDay < 20) {
-    // Dusk (6-8 PM): Transition to orange then dark blue
     const t = (timeOfDay - 18) / 2;
-    if (t < 0.5) {
-      // First hour: blue to orange
-      return interpolateColor(0x87ceeb, 0xff6b35, t * 2);
-    } else {
-      // Second hour: orange to dark blue
-      return interpolateColor(0xff6b35, 0x1a1a3e, (t - 0.5) * 2);
-    }
+    return t < 0.5 ? interpolateColor(0x87ceeb, 0xff6b35, t * 2) : interpolateColor(0xff6b35, 0x1a1a3e, (t - 0.5) * 2);
   } else {
-    // Night (8 PM - 6 AM): Dark blue
     return 0x1a1a3e;
   }
 }
 
-function interpolateColor(color1, color2, t) {
-  const r1 = (color1 >> 16) & 0xff;
-  const g1 = (color1 >> 8) & 0xff;
-  const b1 = color1 & 0xff;
-  
-  const r2 = (color2 >> 16) & 0xff;
-  const g2 = (color2 >> 8) & 0xff;
-  const b2 = color2 & 0xff;
-  
-  const r = Math.round(r1 + (r2 - r1) * t);
-  const g = Math.round(g1 + (g2 - g1) * t);
-  const b = Math.round(b1 + (b2 - b1) * t);
-  
-  return (r << 16) | (g << 8) | b;
+function interpolateColor(c1, c2, t) {
+  const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
+  const r2 = (c2 >> 16) & 0xff, g2 = (c2 >> 8) & 0xff, b2 = c2 & 0xff;
+  return (Math.round(r1 + (r2 - r1) * t) << 16) | (Math.round(g1 + (g2 - g1) * t) << 8) | Math.round(b1 + (b2 - b1) * t);
 }
 
 function getAmbientAlpha(timeOfDay) {
-  // Darkness overlay alpha based on time
-  if (timeOfDay >= 7 && timeOfDay < 18) {
-    // Full daylight
-    return 0;
-  } else if (timeOfDay >= 18 && timeOfDay < 20) {
-    // Getting darker (dusk)
-    return ((timeOfDay - 18) / 2) * 0.4;
-  } else if (timeOfDay >= 20 || timeOfDay < 6) {
-    // Night
-    return 0.4;
-  } else if (timeOfDay >= 6 && timeOfDay < 7) {
-    // Getting lighter (dawn)
-    return 0.4 - ((timeOfDay - 6) * 0.4);
-  }
-  return 0;
+  if (timeOfDay >= 7 && timeOfDay < 18) return 0;
+  if (timeOfDay >= 18 && timeOfDay < 20) return ((timeOfDay - 18) / 2) * 0.4;
+  if (timeOfDay >= 20 || timeOfDay < 6) return 0.4;
+  return 0.4 - ((timeOfDay - 6) * 0.4);
 }
 
-// Create darkness overlay for night
-const darknessOverlay = new PIXI.Graphics();
-darknessOverlay.rect(-1000, -1000, 2000, 2000);
-darknessOverlay.fill({ color: 0x000000, alpha: 0 });
-worldContainer.addChild(darknessOverlay);
+// Stats Panel (Sidebar)
+const sidebar = document.createElement('div');
+sidebar.style.position = 'absolute';
+sidebar.style.top = '10px';
+sidebar.style.right = '10px';
+sidebar.style.width = '250px';
+sidebar.style.background = 'rgba(0, 0, 0, 0.8)';
+sidebar.style.color = 'white';
+sidebar.style.padding = '15px';
+sidebar.style.borderRadius = '8px';
+sidebar.style.fontFamily = 'monospace';
+sidebar.style.display = 'none'; // Hidden by default
+document.body.appendChild(sidebar);
 
-// Animation loop
+// Add Tab Button
+const btnStats = document.createElement('button');
+btnStats.textContent = '📊 Stats';
+btnStats.className = 'control-btn';
+btnStats.style.marginLeft = '10px';
+document.querySelector('#controls').appendChild(btnStats);
+
+btnStats.addEventListener('click', () => {
+  sidebar.style.display = sidebar.style.display === 'none' ? 'block' : 'none';
+});
+
+
+// Loop
 let lastTime = performance.now();
 app.ticker.add(() => {
   const currentTime = performance.now();
-  const deltaTime = (currentTime - lastTime) / 1000;
+  let deltaTime = (currentTime - lastTime) / 1000;
   lastTime = currentTime;
-  
+
+  // Safety cap on deltaTime to prevent spiral of death if frame lags
+  if (deltaTime > 0.1) deltaTime = 0.1;
+
   if (isSimulating && timeManager && peopleManager && vehicleManager) {
     timeManager.update(deltaTime);
     peopleManager.update(deltaTime, timeManager);
     vehicleManager.update(deltaTime);
-    
+
     const timeOfDay = timeManager.getTimeOfDay();
     const isDaytime = timeOfDay >= 6 && timeOfDay < 20;
-    
-    // Update sky color based on time of day
+
     app.renderer.background.color = getSkyColor(timeOfDay);
-    
-    // Update darkness overlay
+
     const darkness = getAmbientAlpha(timeOfDay);
     darknessOverlay.clear();
-    darknessOverlay.rect(-1000, -1000, 2000, 2000);
+    darknessOverlay.rect(-2000, -2000, 4000, 4000); // Updated size
     darknessOverlay.fill({ color: 0x000000, alpha: darkness });
-    
-    // Update stats
+
     const timeEmoji = isDaytime ? '☀️' : '🌙';
     statsText.textContent = `${timeEmoji} ${timeManager.getTimeString()} | People: ${peopleManager.people.length} | Cars: ${vehicleManager.vehicles.length}`;
+
+    // Update Sidebar Stats
+    if (sidebar.style.display !== 'none') {
+      const zones = model.zones;
+      const residential = zones.filter(z => z.type === 'residential').length;
+      const commercial = zones.filter(z => z.type === 'commercial').length;
+
+      sidebar.innerHTML = `
+        <h3>Town Metrics</h3>
+        <p>Time: ${timeManager.getTimeString()}</p>
+        <p>Population: ${peopleManager.people.length}</p>
+        <p>Vehicles: ${vehicleManager.vehicles.length}</p>
+        <hr>
+        <p>Zones:</p>
+        <ul>
+          <li>Residential: ${residential}</li>
+          <li>Commercial: ${commercial}</li>
+          <li>Industrial: ${zones.filter(z => z.type === 'industrial').length}</li>
+        </ul>
+        <p>Active Agents: ${peopleManager.people.filter(p => p.currentLocation === null).length}</p>
+        `;
+    }
   }
 });
 
