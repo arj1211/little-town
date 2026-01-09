@@ -371,6 +371,9 @@ app.ticker.add(() => {
     peopleManager.update(deltaTime, timeManager);
     vehicleManager.update(deltaTime);
 
+    // Update traffic lights
+    renderer.updateTrafficLights(timeManager.getTimeOfDay() * 3600); // Pass seconds
+
     const timeOfDay = timeManager.getTimeOfDay();
     const isDaytime = timeOfDay >= 6 && timeOfDay < 20;
 
@@ -402,7 +405,7 @@ app.ticker.add(() => {
           <li>Commercial: ${commercial}</li>
           <li>Industrial: ${zones.filter(z => z.type === 'industrial').length}</li>
         </ul>
-        <p>Active Agents: ${peopleManager.people.filter(p => p.currentLocation === null).length}</p>
+        <p>Active Agents: ${peopleManager.people.filter(p => (p.sidewalkPath && p.sidewalkPath.length > 0) || p.currentActivity === 'commute').length}</p>
         `;
     }
   }

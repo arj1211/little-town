@@ -48,7 +48,8 @@ export class VehicleManager {
     ];
 
     const graphics = new PIXI.Graphics();
-    graphics.rect(-1.5, -0.8, 3, 1.6);
+    // Resized car: Bigger (5x2.5)
+    graphics.rect(-2.5, -1.25, 5, 2.5);
     graphics.fill(carColors[Math.floor(Math.random() * carColors.length)]);
 
     const startNode = this.getRandomRoadNode();
@@ -69,6 +70,8 @@ export class VehicleManager {
       pathIndex: 0,
       state: 'parked',
       waitTimer: Math.random() * 5,
+      stopSignTimer: 0,
+      lastStoppedNodeId: -1,
       rotation: 0
     };
 
@@ -91,49 +94,143 @@ export class VehicleManager {
 
   updateVehicle(vehicle, deltaTime, speedScale) {
     if (vehicle.state === 'parked') {
-      vehicle.waitTimer -= deltaTime; // Wait time in real seconds? Or scaled? Let's use real seconds for waiting.
+      vehicle.waitTimer -= deltaTime;
 
       if (vehicle.waitTimer <= 0) {
         this.pickNewDestination(vehicle);
       }
     } else if (vehicle.state === 'driving') {
+
       if (vehicle.roadPath.length > 0 && vehicle.pathIndex < vehicle.roadPath.length) {
         const target = vehicle.roadPath[vehicle.pathIndex];
-        const dx = target.x - vehicle.graphics.x;
-        const dy = target.y - vehicle.graphics.y;
+        const dx = target.x - vehicle.currentLocation.position.x;
+        const dy = target.y - vehicle.currentLocation.position.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
         // Face direction
         vehicle.rotation = Math.atan2(dy, dx);
         vehicle.graphics.rotation = vehicle.rotation;
 
-        const effectiveSpeed = vehicle.baseSpeed * speedScale;
+        let currentSpeed = vehicle.baseSpeed * speedScale;
+
+        // --- Traffic Logic ---
+        // Determine if we are approaching an intersection
+        if (distance < 25) { // Increased distance check for smoother stopping
+          const approachingNode = this.findNearestRoadNode(target);
+
+          if (approachingNode) {
+            // Determine Approach Axis (Horizontal vs Vertical)
+            // Cos is X-component. If |Cos| > |Sin|, we are moving horizontally.
+            const isHorizontal = Math.abs(Math.cos(vehicle.rotation)) > Math.abs(Math.sin(vehicle.rotation));
+
+            const time = this.timeManager.getTimeOfDay() * 3600;
+            const cycleLength = 120;
+            const offset = (approachingNode.id * 17) % cycleLength;
+            const localTime = (time + offset) % cycleLength;
+
+            const isTrafficLight = approachingNode.connections.length >= 4;
+            const isStopSign = approachingNode.connections.length === 3;
+
+            // 1. Traffic Lights
+            if (isTrafficLight) {
+              // Cycle: 0-50 Vert Green, 60-110 Horz Green.
+              // Safety buffer 5s (Yellow/Red)
+              let isGreen = false;
+              if (isHorizontal) {
+                if (localTime >= 60 && localTime < 110) isGreen = true;
+              } else {
+                if (localTime < 50) isGreen = true;
+              }
+
+              // Stop if Red/Yellow
+              // Allow approaching until distance < 12. 
+              // Allow clearing if distance < 4.
+              if (!isGreen && distance < 12 && distance > 4) {
+                currentSpeed = 0;
+              }
+            }
+            // 2. Stop Signs
+            else if (isStopSign) {
+              // Stop if we haven't stopped yet, and we are at the line (dist < 12)
+              // But not if we are leaving (dist < 4)
+              if (vehicle.lastStoppedNodeId !== approachingNode.id && distance < 12 && distance > 4) {
+                // Stop logic
+                currentSpeed = 0;
+                if (vehicle.stopSignTimer <= 0) {
+                  vehicle.stopSignTimer = 1.5; // Stop for 1.5 seconds
+                }
+                vehicle.stopSignTimer -= deltaTime;
+                if (vehicle.stopSignTimer <= 0) {
+                  vehicle.lastStoppedNodeId = approachingNode.id;
+                  currentSpeed = vehicle.baseSpeed * speedScale; // Go
+                }
+              }
+            }
+
+            // 3. Yield to Pedestrians (Crosswalks)
+            // Stop if at line (distance < 14) and people are there
+            if (currentSpeed > 0 && distance < 14 && distance > 4) {
+              // Check if any person is in the intersection area
+              const people = this.peopleManager.people;
+              // Only check if we are close enough to care
+              if (people && people.length > 0) {
+                for (let i = 0; i < people.length; i++) {
+                  const p = people[i];
+                  if (!p.currentLocation) continue;
+                  const pdx = p.currentLocation.position.x - approachingNode.x;
+                  const pdy = p.currentLocation.position.y - approachingNode.y;
+                  const pDistSq = pdx * pdx + pdy * pdy;
+
+                  // If person is within 15px of intersection center (covers crosswalks)
+                  if (pDistSq < 225) {
+                    currentSpeed = 0; // Yield
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          // Reset stop sign memory when far away
+          vehicle.lastStoppedNodeId = -1;
+          vehicle.stopSignTimer = 0;
+        }
+
+        const effectiveSpeed = currentSpeed;
         const step = effectiveSpeed * deltaTime;
 
         if (distance < step * 1.5) {
           vehicle.pathIndex++;
+          // Snap strictly
+          vehicle.currentLocation.position.x = target.x;
+          vehicle.currentLocation.position.y = target.y;
+          vehicle.graphics.x = target.x;
+          vehicle.graphics.y = target.y;
+
           if (vehicle.pathIndex >= vehicle.roadPath.length) {
-            vehicle.currentLocation = vehicle.targetLocation;
+            vehicle.currentLocation.position = vehicle.targetLocation.position;
             vehicle.targetLocation = null;
             vehicle.state = 'parked';
             vehicle.waitTimer = 3 + Math.random() * 7;
           }
         } else {
-          // Offset
+          // Offset to right side of road
           const roadOffset = 2;
           const perpAngle = vehicle.rotation + Math.PI / 2;
           const offsetX = Math.cos(perpAngle) * roadOffset;
           const offsetY = Math.sin(perpAngle) * roadOffset;
 
           // Move towards target
-          vehicle.graphics.x += (dx / distance) * step;
-          vehicle.graphics.y += (dy / distance) * step;
-          vehicle.currentLocation = { position: { x: vehicle.graphics.x, y: vehicle.graphics.y } };
+          vehicle.currentLocation.position.x += (dx / distance) * step;
+          vehicle.currentLocation.position.y += (dy / distance) * step;
+
+          vehicle.graphics.x = vehicle.currentLocation.position.x + offsetX;
+          vehicle.graphics.y = vehicle.currentLocation.position.y + offsetY;
         }
       } else {
-        // Arrived at destination
+        // Arrived at destination or invalid path
         vehicle.state = 'parked';
-        vehicle.graphics.visible = false; // "Park" inside value
+        vehicle.graphics.visible = false;
         vehicle.waitTimer = 3 + Math.random() * 5;
       }
     }

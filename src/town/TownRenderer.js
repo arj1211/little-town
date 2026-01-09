@@ -130,38 +130,68 @@ export class TownRenderer {
         const isStopSign = node.connections.length === 3;
 
         // Draw Crosswalks (Always for intersections)
-        const cwSize = 14;
+        // Reduced size from 14 to 10
+        const cwSize = 10;
         bg.rect(node.x - cwSize / 2, node.y - cwSize / 2, cwSize, cwSize);
         bg.fill({ color: 0xffffff, alpha: 0.3 });
 
         for (let i = 0; i < 3; i++) {
-            bg.rect(node.x - cwSize / 2 + 2, node.y - cwSize / 2 + i * 4 + 1, cwSize - 4, 2);
+            bg.rect(node.x - cwSize / 2 + 1, node.y - cwSize / 2 + i * 3 + 1, cwSize - 2, 1.5);
             bg.fill(0xffffff);
         }
 
         if (isTrafficLight) {
-            // Light pole
-            g.rect(node.x - 2, node.y - 12, 4, 14);
-            g.fill(0x333333);
-            // Light box
-            g.rect(node.x - 4, node.y - 14, 8, 6);
-            g.fill(0x000000);
-            // Red light
-            g.circle(node.x, node.y - 11, 2);
-            g.fill(0xff0000);
-        } else if (isStopSign) {
-            // Stop sign pole
-            g.rect(node.x - 1, node.y - 12, 2, 12);
-            g.fill(0x555555);
-            // Octagon (simplified as circle or rotated rect)
-            g.regularPoly(node.x, node.y - 14, 4, 8); // x, y, radius, sides
-            g.fill(0xff0000); // Red
-            // White rim
-            g.stroke({ width: 0.5, color: 0xffffff });
-        }
+            // Draw 4 lights for realistic intersection
+            const offset = 4;
+            // Vertical Lights (N/S)
+            // Top
+            this.createTrafficLightBulb(node, 0, -offset, 'vertical');
+            // Bottom
+            this.createTrafficLightBulb(node, 0, offset, 'vertical');
 
-        this.intersectionGraphics.addChild(bg);
-        this.intersectionGraphics.addChild(g);
+            // Horizontal Lights (E/W)
+            // Left
+            this.createTrafficLightBulb(node, -offset, 0, 'horizontal');
+            // Right
+            this.createTrafficLightBulb(node, offset, 0, 'horizontal');
+
+            this.intersectionGraphics.addChild(bg);
+        } else if (isStopSign) {
+            // Stop sign pole (Smaller)
+            g.rect(node.x - 0.5, node.y - 5, 1, 5);
+            g.fill(0x555555);
+            // Octagon (Smaller: radius 2 instead of 2.5)
+            g.regularPoly(node.x, node.y - 6, 2, 8);
+            g.fill(0xff0000);
+            g.stroke({ width: 0.5, color: 0xffffff });
+
+            this.intersectionGraphics.addChild(bg);
+            this.intersectionGraphics.addChild(g);
+        } else {
+            this.intersectionGraphics.addChild(bg);
+            this.intersectionGraphics.addChild(g);
+        }
+    }
+
+    createTrafficLightBulb(node, dx, dy, axis) {
+        // Small box
+        const box = new PIXI.Graphics();
+        box.rect(node.x + dx - 1.5, node.y + dy - 1.5, 3, 3);
+        box.fill(0x000000);
+        this.intersectionGraphics.addChild(box);
+
+        // Bulb
+        const bulb = new PIXI.Graphics();
+        bulb.circle(node.x + dx, node.y + dy, 0.8); // Radius 0.8
+        bulb.fill(0xff0000); // Default Red
+        bulb.userData = {
+            type: 'traffic-light-bulb',
+            nodeId: node.id,
+            axis: axis,
+            x: node.x + dx,
+            y: node.y + dy
+        };
+        this.intersectionGraphics.addChild(bulb);
     }
 
     renderZones(zones) {
@@ -205,5 +235,45 @@ export class TownRenderer {
             road: 0x404040          // Dark gray
         };
         return colors[type] || 0xeeeeee;
+    }
+
+    updateTrafficLights(time) {
+        // Cycle: Total 120s
+        // 0-50: Vert Green, Horz Red
+        // 50-55: Vert Yellow, Horz Red
+        // 55-60: All Red
+        // 60-110: Vert Red, Horz Green
+        // 110-115: Vert Red, Horz Yellow
+        // 115-120: All Red
+        const cycleLength = 120;
+
+        this.intersectionGraphics.children.forEach(child => {
+            if (child.userData && child.userData.type === 'traffic-light-bulb') {
+                const nodeId = child.userData.nodeId;
+                const axis = child.userData.axis;
+
+                // Randomize based on node ID
+                const offset = (nodeId * 17) % cycleLength;
+                const localTime = (time + offset) % cycleLength;
+
+                let color = 0xff0000; // Default Red
+
+                if (axis === 'vertical') {
+                    if (localTime < 50) color = 0x00ff00; // Green
+                    else if (localTime < 55) color = 0xffff00; // Yellow
+                } else {
+                    // Horizontal
+                    if (localTime >= 60 && localTime < 110) color = 0x00ff00; // Green
+                    else if (localTime >= 110 && localTime < 115) color = 0xffff00; // Yellow
+                }
+
+                // Redraw
+                child.clear();
+                if (child.userData.x !== undefined) {
+                    child.circle(child.userData.x, child.userData.y, 0.8);
+                    child.fill(color);
+                }
+            }
+        });
     }
 }

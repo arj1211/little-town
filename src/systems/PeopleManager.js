@@ -149,7 +149,7 @@ export class PeopleManager {
 
     // Create simple square sprite for person
     const graphics = new PIXI.Graphics();
-    graphics.rect(-2, -2, 4, 4); // Larger size (4x4)
+    graphics.rect(-1, -1, 2, 2); // Reduced size from 4x4 to 2x2
     graphics.fill(personColors[Math.floor(Math.random() * personColors.length)]);
 
     const role = this.assignRole(id);
